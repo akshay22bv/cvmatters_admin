@@ -36,3 +36,4 @@ Standalone admin console for [CV Matters](../CV_MATTERS). It talks to the **same
 Build with `npm run build` and host `dist/` on any static host. Set `VITE_API_ORIGIN` at build time to your production API, or put the admin app behind a reverse proxy that forwards `/api` to the backend.
 
 This repo is intentionally separate from the main CV Matters monorepo.
+# cvmatters_admin
