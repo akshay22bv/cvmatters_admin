@@ -189,14 +189,69 @@ body {
 }
 
 .adm-btn.is-primary {
-  background: var(--prof-ink);
+  background: var(--prof-green);
   color: #fff;
-  border-color: var(--prof-ink);
+  border-color: transparent;
+}
+
+.adm-btn.is-danger {
+  background: #c62828;
+  color: #fff;
+  border-color: transparent;
 }
 
 .adm-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.adm-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.adm-confirm-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(13, 13, 13, 0.45);
+  cursor: default;
+}
+
+.adm-confirm-panel {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+  padding: 24px;
+  border: 1px solid var(--prof-line);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+}
+
+.adm-confirm-panel h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.adm-confirm-panel p {
+  margin: 0 0 20px;
+  color: var(--prof-muted);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.adm-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .adm-table-wrap {

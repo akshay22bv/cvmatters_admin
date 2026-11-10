@@ -15,6 +15,7 @@ import {
   type AdminUserRow,
   ApiError,
 } from "./api";
+import { useConfirm } from "./ConfirmProvider";
 import { readToken } from "./session";
 
 type Tab = "overview" | "users" | "resumes";
@@ -48,6 +49,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [page, setPage] = useState(0);
+  const confirm = useConfirm();
   const limit = 20;
 
   useEffect(() => {
@@ -146,7 +148,13 @@ export function App() {
   };
 
   const removeUser = async (row: AdminUserRow) => {
-    if (!window.confirm(`Delete account for ${row.email}? All their CVs and billing data will go too.`)) return;
+    const ok = await confirm({
+      title: "Delete account",
+      message: `Delete account for ${row.email}? All their CVs and billing data will go too.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setError("");
     try {
@@ -176,7 +184,13 @@ export function App() {
 
   const removeResume = async (row: AdminResumeRow) => {
     const title = row.fullName || row.slug || row.id;
-    if (!window.confirm(`Delete CV "${title}"?`)) return;
+    const ok = await confirm({
+      title: "Delete CV",
+      message: `Delete CV "${title}"?`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setError("");
     try {
