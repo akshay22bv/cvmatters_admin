@@ -1,4 +1,4 @@
-export type AdminPage = "overview" | "orders" | "users" | "resumes" | "blog";
+export type AdminPage = "overview" | "orders" | "users" | "resumes" | "blog" | "admins";
 
 export const PAGE_PATH: Record<AdminPage, string> = {
   overview: "/",
@@ -6,6 +6,7 @@ export const PAGE_PATH: Record<AdminPage, string> = {
   users: "/users",
   resumes: "/cvs",
   blog: "/blog",
+  admins: "/admins",
 };
 
 export function pathToPage(pathname: string): AdminPage {
@@ -14,6 +15,7 @@ export function pathToPage(pathname: string): AdminPage {
   if (path === "/users") return "users";
   if (path === "/cvs" || path === "/resumes") return "resumes";
   if (path === "/blog" || path.startsWith("/blog/")) return "blog";
+  if (path === "/admins") return "admins";
   return "overview";
 }
 

@@ -1,22 +1,27 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
+  adminCreateAdmin,
   adminCreateBlog,
+  adminDeleteAdmin,
   adminDeleteBlog,
   adminDeleteResume,
   adminDeleteUser,
   adminGetBlog,
+  adminListAdmins,
   adminListBlog,
   adminListOrders,
   adminListResumes,
   adminListUsers,
   adminStats,
+  adminUpdateAdmin,
   adminUpdateBlog,
   adminUpdateResume,
   loadMe,
   signIn,
   signOut,
   type Account,
+  type AdminAdminRow,
   type AdminBlogPost,
   type AdminOrderRow,
   type AdminResumeRow,
@@ -91,6 +96,16 @@ const TABS: { id: AdminPage; label: string; icon: ReactNode }[] = [
       </svg>
     ),
   },
+  {
+    id: "admins",
+    label: "Admins",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M12 3.5 4.5 7v4.5c0 4.2 3.1 7.9 7.5 9 4.4-1.1 7.5-4.8 7.5-9V7L12 3.5Z" />
+        <path d="M9.5 12.2 11.2 14l3.5-3.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
 ];
 
 function fmtDate(value: string | null | undefined) {
@@ -117,6 +132,10 @@ function initials(value: string) {
     .join("");
 }
 
+function normalizeEmailMatch(a: string, b: string) {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -127,6 +146,7 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [navOpen, setNavOpen] = useState(false);
 
@@ -135,10 +155,15 @@ export function App() {
   const [resumes, setResumes] = useState<AdminResumeRow[]>([]);
   const [orders, setOrders] = useState<AdminOrderRow[]>([]);
   const [posts, setPosts] = useState<AdminBlogPost[]>([]);
+  const [admins, setAdmins] = useState<AdminAdminRow[]>([]);
   const [userTotal, setUserTotal] = useState(0);
   const [resumeTotal, setResumeTotal] = useState(0);
   const [orderTotal, setOrderTotal] = useState(0);
   const [blogTotal, setBlogTotal] = useState(0);
+  const [adminForm, setAdminForm] = useState({ email: "", name: "", password: "" });
+  const [adminModal, setAdminModal] = useState<null | { mode: "add" } | { mode: "edit"; row: AdminAdminRow }>(null);
+  const [adminFormError, setAdminFormError] = useState("");
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [q, setQ] = useState("");
   const [publicFilter, setPublicFilter] = useState<"" | "true" | "false">("");
   const [orderStatus, setOrderStatus] = useState<"" | "paid" | "pending" | "failed">("");
@@ -243,6 +268,19 @@ export function App() {
     }
   }, [limit, page, q]);
 
+  const loadAdmins = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await adminListAdmins();
+      setAdmins(result.admins);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Couldn't load admins.");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   useEffect(() => {
     setPage(0);
     setQ("");
@@ -261,8 +299,9 @@ export function App() {
     else if (tab === "users") void loadUsers();
     else if (tab === "orders") void loadOrders();
     else if (tab === "blog") void loadBlog();
+    else if (tab === "admins") void loadAdmins();
     else void loadResumes();
-  }, [blogEditor, isAdmin, loadBlog, loadOrders, loadOverview, loadResumes, loadUsers, page, tab]);
+  }, [blogEditor, isAdmin, loadAdmins, loadBlog, loadOrders, loadOverview, loadResumes, loadUsers, page, tab]);
 
   const onLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -272,7 +311,7 @@ export function App() {
       const result = await signIn(email.trim(), password);
       setUser(result.user);
       setIsAdmin(!!result.isAdmin);
-      if (!result.isAdmin) setLoginError("That account isn't in ADMIN_EMAILS on the API server.");
+      if (!result.isAdmin) setLoginError("That account isn't an admin. Ask an existing admin to add you.");
     } catch (reason) {
       setLoginError(reason instanceof ApiError ? reason.message : "Sign-in failed.");
     } finally {
@@ -456,7 +495,7 @@ export function App() {
 
   const tabLabel = TABS.find((item) => item.id === tab)?.label || "Overview";
 
-  const pager = !blogEditor && tab !== "overview" ? (
+  const pager = !blogEditor && tab !== "overview" && tab !== "admins" ? (
     <AdminPager
       page={page}
       limit={limit}
@@ -469,6 +508,74 @@ export function App() {
       }}
     />
   ) : null;
+
+  const openAddAdmin = () => {
+    setAdminForm({ email: "", name: "", password: "" });
+    setAdminFormError("");
+    setShowAdminPassword(false);
+    setAdminModal({ mode: "add" });
+  };
+
+  const openEditAdmin = (row: AdminAdminRow) => {
+    setAdminForm({ email: row.email, name: row.name || "", password: "" });
+    setAdminFormError("");
+    setShowAdminPassword(false);
+    setAdminModal({ mode: "edit", row });
+  };
+
+  const closeAdminModal = () => {
+    setAdminModal(null);
+    setAdminFormError("");
+    setShowAdminPassword(false);
+  };
+
+  const saveAdmin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!adminModal) return;
+    setBusy(true);
+    setAdminFormError("");
+    setError("");
+    try {
+      if (adminModal.mode === "add") {
+        await adminCreateAdmin({
+          email: adminForm.email.trim(),
+          name: adminForm.name.trim() || undefined,
+          password: adminForm.password || undefined,
+        });
+      } else {
+        await adminUpdateAdmin(adminModal.row.id, {
+          name: adminForm.name.trim(),
+          password: adminForm.password || undefined,
+        });
+      }
+      closeAdminModal();
+      await loadAdmins();
+    } catch (reason) {
+      setAdminFormError(reason instanceof Error ? reason.message : "Couldn't save that admin.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeAdminRow = async (row: AdminAdminRow) => {
+    const ok = await confirm({
+      title: "Remove admin",
+      message: `Remove admin access for ${row.email}?`,
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError("");
+    try {
+      await adminDeleteAdmin(row.id);
+      await loadAdmins();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Couldn't remove that admin.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (!ready) {
     return (
@@ -487,9 +594,6 @@ export function App() {
             CV Matters Admin
           </div>
           <h1>Sign in</h1>
-          <p>
-            Use an email listed in <code>ADMIN_EMAILS</code> on the API server.
-          </p>
           <form className="adm-login" onSubmit={onLogin}>
             <label>
               Email
@@ -497,13 +601,45 @@ export function App() {
             </label>
             <label>
               Password
-              <input
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <span className="adm-password-field">
+                <input
+                  type={showLoginPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="adm-password-toggle"
+                  aria-label={showLoginPassword ? "Hide password" : "Show password"}
+                  onClick={() => setShowLoginPassword((value) => !value)}
+                >
+                  {showLoginPassword ? (
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.1A10.5 10.5 0 0 1 12 5c5 0 9.3 3.1 11 7-0.5 1.2-1.2 2.3-2.1 3.3M6.1 6.1C4.3 7.3 2.9 9 2 12c1.7 3.9 6 7 11 7 1.4 0 2.7-.2 4-.7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinejoin="round"
+                      />
+                      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.7" />
+                    </svg>
+                  )}
+                </button>
+              </span>
             </label>
             {loginError ? <p className="adm-error">{loginError}</p> : null}
             <button type="submit" className="adm-btn is-primary" disabled={busy}>
@@ -596,7 +732,9 @@ export function App() {
                         ? "Accounts, plans, and CV counts."
                         : tab === "blog"
                           ? "Write SEO posts. Public URLs look like /blog/your-slug."
-                          : "Hosted resumes and public pages."}
+                          : tab === "admins"
+                            ? "Grant or revoke admin access for team emails."
+                            : "Hosted resumes and public pages."}
               </p>
             </div>
             {tab === "overview" && !blogEditor ? (
@@ -607,6 +745,11 @@ export function App() {
             {tab === "blog" && !blogEditor ? (
               <button type="button" className="adm-btn is-primary" disabled={busy} onClick={openNewBlog}>
                 New post
+              </button>
+            ) : null}
+            {tab === "admins" && !blogEditor ? (
+              <button type="button" className="adm-btn is-primary" disabled={busy} onClick={openAddAdmin}>
+                Add admin
               </button>
             ) : null}
             {blogEditor ? (
@@ -846,7 +989,165 @@ export function App() {
             </section>
           ) : null}
 
-          {!blogEditor && tab !== "overview" && tab !== "blog" ? (
+          {!blogEditor && tab === "admins" ? (
+            <section className="adm-panel">
+              <div className="adm-panel-head">
+                <h2>
+                  {admins.length} admin{admins.length === 1 ? "" : "s"}
+                </h2>
+                <div className="adm-panel-acts">
+                  <button type="button" className="adm-btn" disabled={busy} onClick={() => void loadAdmins()}>
+                    Refresh
+                  </button>
+                  <button type="button" className="adm-btn is-primary" disabled={busy} onClick={openAddAdmin}>
+                    Add admin
+                  </button>
+                </div>
+              </div>
+
+              <div className="adm-table-wrap">
+                <table className="adm-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Account</th>
+                      <th>Added</th>
+                      <th className="adm-col-actions">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {admins.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.name || "—"}</td>
+                        <td>
+                          <div>{row.email}</div>
+                          {row.fromEnv || normalizeEmailMatch(row.email, user.email) ? (
+                            <small className="adm-sub">
+                              {[row.fromEnv ? "env bootstrap" : null, normalizeEmailMatch(row.email, user.email) ? "you" : null]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </small>
+                          ) : null}
+                        </td>
+                        <td>{row.hasAccount ? "Signed up" : "Invite only"}</td>
+                        <td className="adm-nowrap">{fmtDate(row.createdAt)}</td>
+                        <td className="adm-actions">
+                          <button type="button" className="adm-link" disabled={busy} onClick={() => openEditAdmin(row)}>
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="adm-link danger"
+                            disabled={busy || normalizeEmailMatch(row.email, user.email) || row.fromEnv}
+                            onClick={() => void removeAdminRow(row)}
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!admins.length && !busy ? <p className="adm-empty">No admins yet. Click “Add admin”.</p> : null}
+              </div>
+            </section>
+          ) : null}
+
+          {adminModal ? (
+            <div className="adm-confirm" role="dialog" aria-modal="true" aria-labelledby="adm-admin-modal-title">
+              <button type="button" className="adm-confirm-scrim" aria-label="Close" onClick={closeAdminModal} />
+              <form className="adm-confirm-panel adm-admin-modal" onSubmit={(event) => void saveAdmin(event)}>
+                <h2 id="adm-admin-modal-title">{adminModal.mode === "add" ? "Add admin" : "Edit admin"}</h2>
+                <p>
+                  {adminModal.mode === "add"
+                    ? "Grant admin access. Add a password only if this email does not have an account yet."
+                    : "Update the display name or set a new password for this admin account."}
+                </p>
+
+                <div className="adm-admin-modal-fields">
+                  <label>
+                    Email
+                    <input
+                      type="email"
+                      required
+                      autoFocus={adminModal.mode === "add"}
+                      autoComplete="off"
+                      placeholder="name@company.com"
+                      value={adminForm.email}
+                      disabled={adminModal.mode === "edit"}
+                      onChange={(event) => setAdminForm((current) => ({ ...current, email: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Name
+                    <input
+                      type="text"
+                      autoFocus={adminModal.mode === "edit"}
+                      placeholder="Display name"
+                      value={adminForm.name}
+                      onChange={(event) => setAdminForm((current) => ({ ...current, name: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <span className="adm-password-field">
+                      <input
+                        type={showAdminPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        placeholder={adminModal.mode === "edit" ? "Leave blank to keep current" : "Min. 8 characters if new"}
+                        value={adminForm.password}
+                        onChange={(event) => setAdminForm((current) => ({ ...current, password: event.target.value }))}
+                      />
+                      <button
+                        type="button"
+                        className="adm-password-toggle"
+                        aria-label={showAdminPassword ? "Hide password" : "Show password"}
+                        onClick={() => setShowAdminPassword((value) => !value)}
+                      >
+                        {showAdminPassword ? (
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                              d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.1A10.5 10.5 0 0 1 12 5c5 0 9.3 3.1 11 7-0.5 1.2-1.2 2.3-2.1 3.3M6.1 6.1C4.3 7.3 2.9 9 2 12c1.7 3.9 6 7 11 7 1.4 0 2.7-.2 4-.7"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                              d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                              strokeLinejoin="round"
+                            />
+                            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.7" />
+                          </svg>
+                        )}
+                      </button>
+                    </span>
+                  </label>
+                </div>
+
+                {adminFormError ? <p className="adm-error">{adminFormError}</p> : null}
+
+                <div className="adm-confirm-actions">
+                  <button type="button" className="adm-btn" onClick={closeAdminModal}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="adm-btn is-primary" disabled={busy}>
+                    {adminModal.mode === "add" ? "Add admin" : "Save changes"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
+
+          {!blogEditor && tab !== "overview" && tab !== "blog" && tab !== "admins" ? (
             <section className="adm-panel">
               <div className="adm-panel-head">
                 <h2>

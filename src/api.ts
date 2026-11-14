@@ -198,4 +198,37 @@ export function adminDeleteBlog(id: string) {
   return request<{ ok: true }>(`/api/admin/blog/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+export type AdminAdminRow = {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+  createdBy: string | null;
+  userId: string | null;
+  hasAccount: boolean;
+  fromEnv: boolean;
+};
+
+export function adminListAdmins() {
+  return request<{ admins: AdminAdminRow[]; total: number }>("/api/admin/admins");
+}
+
+export function adminCreateAdmin(body: { email: string; name?: string; password?: string }) {
+  return request<{ admin: AdminAdminRow }>("/api/admin/admins", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminUpdateAdmin(id: string, body: { name?: string; password?: string }) {
+  return request<{ admin: AdminAdminRow }>(`/api/admin/admins/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminDeleteAdmin(id: string) {
+  return request<{ ok: true }>(`/api/admin/admins/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export { ApiError };
