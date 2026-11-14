@@ -7,6 +7,10 @@ export type AdminStats = {
   resumes: number;
   public_resumes: number;
   paid_orders: number;
+  pending_orders: number;
+  failed_orders: number;
+  paid_revenue: number;
+  paid_revenue_label: string;
   active_subs: number;
   ratings: number;
   sessions: number;
@@ -18,6 +22,24 @@ export type AdminUserRow = {
   name: string;
   created_at: string;
   resume_count: number;
+  plan: string | null;
+  planExpiresAt: string | null;
+};
+
+export type AdminOrderRow = {
+  id: string;
+  plan: string;
+  amount: number;
+  amountLabel: string;
+  currency: string;
+  provider: string;
+  providerRef: string;
+  status: string;
+  createdAt: string;
+  paidAt: string | null;
+  userId: string;
+  userEmail: string | null;
+  userName: string | null;
 };
 
 export type AdminResumeRow = {
@@ -103,6 +125,16 @@ export function adminListResumes(params: { q?: string; page?: number; limit?: nu
   if (params.public) query.set("public", params.public);
   const suffix = query.toString() ? `?${query}` : "";
   return request<{ resumes: AdminResumeRow[]; total: number }>(`/api/admin/resumes${suffix}`);
+}
+
+export function adminListOrders(params: { q?: string; page?: number; limit?: number; status?: string }) {
+  const query = new URLSearchParams();
+  if (params.q) query.set("q", params.q);
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.limit != null) query.set("limit", String(params.limit));
+  if (params.status) query.set("status", params.status);
+  const suffix = query.toString() ? `?${query}` : "";
+  return request<{ orders: AdminOrderRow[]; total: number }>(`/api/admin/orders${suffix}`);
 }
 
 export function adminUpdateResume(id: string, body: { isPublic?: boolean }) {
