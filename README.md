@@ -31,9 +31,13 @@ Standalone admin console for [CV Matters](../CV_MATTERS). It talks to the **same
 | `npm run build`| Production build to `dist/`       |
 | `npm run preview` | Preview production build      |
 
-## Deploy
+## Deploy (Vercel)
 
-Build with `npm run build` and host `dist/` on any static host. Set `VITE_API_ORIGIN` at build time to your production API, or put the admin app behind a reverse proxy that forwards `/api` to the backend.
+1. Set build env:
+   - `VITE_API_ORIGIN=https://cvmattersbackend.vercel.app`
+   - `VITE_APP_ORIGIN=https://cvmatters.net`
+2. On the **backend**, include the admin origin in `FRONTEND_ORIGIN` (comma-separated), e.g.  
+   `https://cvmatters.net,https://cvmattersadmin.vercel.app`
+3. `vercel.json` also rewrites `/api/*` → the backend, so relative `/api` calls work even without baking the origin into the bundle.
 
 This repo is intentionally separate from the main CV Matters monorepo.
-# cvmatters_admin

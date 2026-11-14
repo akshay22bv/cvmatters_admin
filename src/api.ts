@@ -69,9 +69,19 @@ class ApiError extends Error {
   }
 }
 
+/** Empty in local Vite (proxy /api → backend). Set VITE_API_ORIGIN for production builds. */
+const API_ORIGIN = String(import.meta.env.VITE_API_ORIGIN || "")
+  .trim()
+  .replace(/\/+$/, "");
+
+function apiUrl(path: string) {
+  if (!API_ORIGIN) return path;
+  return `${API_ORIGIN}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = readToken();
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     ...init,
     headers: {
       "Content-Type": "application/json",
