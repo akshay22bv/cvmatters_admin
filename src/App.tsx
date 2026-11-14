@@ -1,30 +1,48 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
+  adminCreateBlog,
+  adminDeleteBlog,
   adminDeleteResume,
   adminDeleteUser,
+  adminGetBlog,
+  adminListBlog,
   adminListOrders,
   adminListResumes,
   adminListUsers,
   adminStats,
+  adminUpdateBlog,
   adminUpdateResume,
   loadMe,
   signIn,
   signOut,
   type Account,
+  type AdminBlogPost,
   type AdminOrderRow,
   type AdminResumeRow,
   type AdminStats,
   type AdminUserRow,
   ApiError,
 } from "./api";
+import { AdminPager } from "./AdminPager";
 import { useConfirm } from "./ConfirmProvider";
+import { blogEditPath, isBlogEditorPath, PAGE_PATH, pathToPage, type AdminPage } from "./paths";
+import { RichEditor } from "./RichEditor";
 import { readToken } from "./session";
 
-type Tab = "overview" | "orders" | "users" | "resumes";
+const emptyBlogForm = {
+  title: "",
+  slug: "",
+  excerpt: "",
+  keyword: "",
+  coverImage: "/blog/online-resume.svg",
+  body: "",
+  published: true,
+};
 
 const APP_ORIGIN = typeof __CV_APP_ORIGIN__ === "string" ? __CV_APP_ORIGIN__ : "http://127.0.0.1:3000";
 
-const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
+const TABS: { id: AdminPage; label: string; icon: ReactNode }[] = [
   {
     id: "overview",
     label: "Overview",
@@ -63,6 +81,16 @@ const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
       </svg>
     ),
   },
+  {
+    id: "blog",
+    label: "Blog",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M5 5.5h14v13H5z" />
+        <path d="M8 9h8M8 12.5h8M8 16h5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
 ];
 
 function fmtDate(value: string | null | undefined) {
@@ -90,6 +118,10 @@ function initials(value: string) {
 }
 
 export function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const tab = pathToPage(location.pathname);
+  const blogEditor = isBlogEditorPath(location.pathname);
   const [user, setUser] = useState<Account | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [ready, setReady] = useState(false);
@@ -98,22 +130,26 @@ export function App() {
   const [loginError, setLoginError] = useState("");
   const [navOpen, setNavOpen] = useState(false);
 
-  const [tab, setTab] = useState<Tab>("overview");
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [resumes, setResumes] = useState<AdminResumeRow[]>([]);
   const [orders, setOrders] = useState<AdminOrderRow[]>([]);
+  const [posts, setPosts] = useState<AdminBlogPost[]>([]);
   const [userTotal, setUserTotal] = useState(0);
   const [resumeTotal, setResumeTotal] = useState(0);
   const [orderTotal, setOrderTotal] = useState(0);
+  const [blogTotal, setBlogTotal] = useState(0);
   const [q, setQ] = useState("");
   const [publicFilter, setPublicFilter] = useState<"" | "true" | "false">("");
   const [orderStatus, setOrderStatus] = useState<"" | "paid" | "pending" | "failed">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [page, setPage] = useState(0);
+  const [limit, setLimit] = useState(10);
+  const [blogForm, setBlogForm] = useState(emptyBlogForm);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [blogReady, setBlogReady] = useState(true);
   const confirm = useConfirm();
-  const limit = 20;
 
   useEffect(() => {
     if (!readToken()) {
@@ -153,7 +189,7 @@ export function App() {
     } finally {
       setBusy(false);
     }
-  }, [page, q]);
+  }, [limit, page, q]);
 
   const loadResumes = useCallback(async () => {
     setBusy(true);
@@ -172,7 +208,7 @@ export function App() {
     } finally {
       setBusy(false);
     }
-  }, [page, publicFilter, q]);
+  }, [limit, page, publicFilter, q]);
 
   const loadOrders = useCallback(async () => {
     setBusy(true);
@@ -191,19 +227,42 @@ export function App() {
     } finally {
       setBusy(false);
     }
-  }, [orderStatus, page, q]);
+  }, [limit, orderStatus, page, q]);
+
+  const loadBlog = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await adminListBlog({ q, page: page + 1, limit });
+      setPosts(result.posts);
+      setBlogTotal(result.total);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Couldn't load blog posts.");
+    } finally {
+      setBusy(false);
+    }
+  }, [limit, page, q]);
 
   useEffect(() => {
     setPage(0);
-  }, [tab, q, publicFilter, orderStatus]);
+    setQ("");
+    setPublicFilter("");
+    setOrderStatus("");
+    setError("");
+  }, [tab]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    setPage(0);
+  }, [q, publicFilter, orderStatus, limit]);
+
+  useEffect(() => {
+    if (!isAdmin || blogEditor) return;
     if (tab === "overview") void loadOverview();
     else if (tab === "users") void loadUsers();
     else if (tab === "orders") void loadOrders();
+    else if (tab === "blog") void loadBlog();
     else void loadResumes();
-  }, [isAdmin, loadOrders, loadOverview, loadResumes, loadUsers, tab]);
+  }, [blogEditor, isAdmin, loadBlog, loadOrders, loadOverview, loadResumes, loadUsers, page, tab]);
 
   const onLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -289,14 +348,127 @@ export function App() {
     }
   };
 
-  const totalPages =
-    tab === "users"
-      ? Math.ceil(userTotal / limit)
-      : tab === "orders"
-        ? Math.ceil(orderTotal / limit)
-        : Math.ceil(resumeTotal / limit);
+  const closeBlogForm = () => {
+    setEditingPostId(null);
+    setBlogForm(emptyBlogForm);
+    navigate(PAGE_PATH.blog);
+  };
+
+  const openNewBlog = () => {
+    setEditingPostId(null);
+    setBlogForm(emptyBlogForm);
+    setBlogReady(true);
+    navigate("/blog/new");
+  };
+
+  const openEditBlog = (post: AdminBlogPost) => {
+    navigate(blogEditPath(post.id));
+  };
+
+  useEffect(() => {
+    if (!isAdmin || !blogEditor) return;
+    const path = location.pathname.replace(/\/+$/, "");
+    if (path === "/blog/new") {
+      setEditingPostId(null);
+      setBlogForm(emptyBlogForm);
+      setBlogReady(true);
+      return;
+    }
+    const match = path.match(/^\/blog\/([^/]+)\/edit$/);
+    const id = match?.[1] ? decodeURIComponent(match[1]) : "";
+    if (!id) return;
+    let stale = false;
+    setBlogReady(false);
+    setError("");
+    adminGetBlog(id)
+      .then((result) => {
+        if (stale) return;
+        const post = result.post;
+        setEditingPostId(post.id);
+        setBlogForm({
+          title: post.title,
+          slug: post.slug,
+          excerpt: post.excerpt,
+          keyword: post.keyword,
+          coverImage: post.coverImage || "/blog/online-resume.svg",
+          body: post.body || "",
+          published: post.published,
+        });
+        setBlogReady(true);
+      })
+      .catch((reason) => {
+        if (stale) return;
+        setError(reason instanceof Error ? reason.message : "Couldn't load that post.");
+        setBlogReady(true);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [blogEditor, isAdmin, location.pathname]);
+
+  const saveBlog = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!blogForm.body.trim()) {
+      setError("Body is required.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      if (editingPostId) {
+        await adminUpdateBlog(editingPostId, blogForm);
+      } else {
+        await adminCreateBlog(blogForm);
+      }
+      navigate(PAGE_PATH.blog);
+      setEditingPostId(null);
+      setBlogForm(emptyBlogForm);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Couldn't save that post.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeBlog = async (post: AdminBlogPost) => {
+    const ok = await confirm({
+      title: "Delete blog post",
+      message: `Delete “${post.title}”? This removes /blog/${post.slug}.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError("");
+    try {
+      await adminDeleteBlog(post.id);
+      if (editingPostId === post.id) closeBlogForm();
+      await loadBlog();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Couldn't delete that post.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const listTotal =
+    tab === "users" ? userTotal : tab === "orders" ? orderTotal : tab === "blog" ? blogTotal : resumeTotal;
 
   const tabLabel = TABS.find((item) => item.id === tab)?.label || "Overview";
+
+  const pager = !blogEditor && tab !== "overview" ? (
+    <AdminPager
+      page={page}
+      limit={limit}
+      total={listTotal}
+      busy={busy}
+      onPageChange={setPage}
+      onLimitChange={(next) => {
+        setLimit(next);
+        setPage(0);
+      }}
+    />
+  ) : null;
 
   if (!ready) {
     return (
@@ -355,20 +527,18 @@ export function App() {
         <nav className="adm-side-nav">
           <p className="adm-side-label">Menu</p>
           {TABS.map((item) => (
-            <button
+            <NavLink
               key={item.id}
-              type="button"
-              className={tab === item.id ? "adm-side-link is-on" : "adm-side-link"}
-              onClick={() => {
-                setTab(item.id);
-                setNavOpen(false);
-              }}
+              to={PAGE_PATH[item.id]}
+              end={item.id === "overview"}
+              className={({ isActive }) => (isActive || (item.id === "blog" && tab === "blog") ? "adm-side-link is-on" : "adm-side-link")}
+              onClick={() => setNavOpen(false)}
             >
               <span className="adm-side-ico" aria-hidden="true">
                 {item.icon}
               </span>
               {item.label}
-            </button>
+            </NavLink>
           ))}
         </nav>
         <div className="adm-side-foot">
@@ -389,7 +559,15 @@ export function App() {
             <div className="adm-crumb">
               <span>Admin</span>
               <span>/</span>
-              <strong>{tabLabel}</strong>
+              {blogEditor ? (
+                <>
+                  <Link to={PAGE_PATH.blog}>Blog</Link>
+                  <span>/</span>
+                  <strong>{editingPostId ? "Edit" : "New"}</strong>
+                </>
+              ) : (
+                <strong>{tabLabel}</strong>
+              )}
             </div>
           </div>
           <div className="adm-top-right">
@@ -403,30 +581,124 @@ export function App() {
           </div>
         </header>
 
-        <main className="adm-content">
+        <main className="adm-content" key={location.pathname}>
           <div className="adm-pagehead">
             <div>
-              <h1>{tabLabel}</h1>
+              <h1>{blogEditor ? (editingPostId ? "Edit post" : "New post") : tabLabel}</h1>
               <p>
-                {tab === "overview"
-                  ? "Live counts for users, payments, and hosted CVs."
-                  : tab === "orders"
-                    ? "All Cashfree and demo checkout attempts."
-                    : tab === "users"
-                      ? "Accounts, plans, and CV counts."
-                      : "Hosted resumes and public pages."}
+                {blogEditor
+                  ? "Write the post on this page, then save. Public URL uses the slug below."
+                  : tab === "overview"
+                    ? "Live counts for users, payments, and hosted CVs."
+                    : tab === "orders"
+                      ? "All Cashfree and demo checkout attempts."
+                      : tab === "users"
+                        ? "Accounts, plans, and CV counts."
+                        : tab === "blog"
+                          ? "Write SEO posts. Public URLs look like /blog/your-slug."
+                          : "Hosted resumes and public pages."}
               </p>
             </div>
-            {tab === "overview" ? (
+            {tab === "overview" && !blogEditor ? (
               <button type="button" className="adm-btn" disabled={busy} onClick={() => void loadOverview()}>
                 Refresh
+              </button>
+            ) : null}
+            {tab === "blog" && !blogEditor ? (
+              <button type="button" className="adm-btn is-primary" disabled={busy} onClick={openNewBlog}>
+                New post
+              </button>
+            ) : null}
+            {blogEditor ? (
+              <button type="button" className="adm-btn" onClick={closeBlogForm}>
+                Back to posts
               </button>
             ) : null}
           </div>
 
           {error ? <p className="adm-error">{error}</p> : null}
 
-          {tab === "overview" && stats ? (
+          {blogEditor ? (
+            !blogReady ? (
+              <p className="adm-note">Loading post…</p>
+            ) : (
+              <section className="adm-panel adm-blog-page">
+                <form className="adm-blog-form" onSubmit={(event) => void saveBlog(event)}>
+                  <div className="adm-blog-form-grid">
+                    <label className="adm-blog-span-2">
+                      Title
+                      <input
+                        required
+                        autoFocus
+                        value={blogForm.title}
+                        onChange={(event) => setBlogForm((current) => ({ ...current, title: event.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      Slug
+                      <input
+                        value={blogForm.slug}
+                        placeholder="auto from title if empty"
+                        onChange={(event) => setBlogForm((current) => ({ ...current, slug: event.target.value }))}
+                      />
+                      <span className="adm-field-hint">URL: /blog/{blogForm.slug || "your-slug"}</span>
+                    </label>
+                    <label>
+                      Primary keyword
+                      <input
+                        value={blogForm.keyword}
+                        onChange={(event) => setBlogForm((current) => ({ ...current, keyword: event.target.value }))}
+                      />
+                    </label>
+                    <label className="adm-blog-span-2">
+                      Cover image URL
+                      <input
+                        value={blogForm.coverImage}
+                        onChange={(event) => setBlogForm((current) => ({ ...current, coverImage: event.target.value }))}
+                      />
+                    </label>
+                    <label className="adm-blog-span-2">
+                      Excerpt
+                      <textarea
+                        rows={3}
+                        value={blogForm.excerpt}
+                        onChange={(event) => setBlogForm((current) => ({ ...current, excerpt: event.target.value }))}
+                      />
+                    </label>
+                    <div className="adm-blog-span-2">
+                      <RichEditor
+                        label="Body"
+                        value={blogForm.body}
+                        placeholder="Write the post…"
+                        minHeight={320}
+                        onChange={(body) => setBlogForm((current) => ({ ...current, body }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="adm-blog-form-foot">
+                    <label className="adm-check">
+                      <input
+                        type="checkbox"
+                        checked={blogForm.published}
+                        onChange={(event) => setBlogForm((current) => ({ ...current, published: event.target.checked }))}
+                      />
+                      Published
+                    </label>
+                    <div className="adm-blog-form-acts">
+                      <button type="button" className="adm-btn" onClick={closeBlogForm}>
+                        Cancel
+                      </button>
+                      <button type="submit" className="adm-btn is-primary" disabled={busy}>
+                        {editingPostId ? "Save changes" : "Publish post"}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </section>
+            )
+          ) : null}
+
+          {!blogEditor && tab === "overview" && stats ? (
             <ul className="adm-stats">
               <li className="adm-stat">
                 <span>Users</span>
@@ -508,7 +780,73 @@ export function App() {
             </ul>
           ) : null}
 
-          {tab !== "overview" ? (
+          {!blogEditor && tab === "blog" ? (
+            <section className="adm-panel">
+              <div className="adm-panel-head">
+                <h2>
+                  {blogTotal} post{blogTotal === 1 ? "" : "s"}
+                </h2>
+              </div>
+              <div className="adm-toolbar">
+                <input
+                  type="search"
+                  className="adm-search"
+                  placeholder="Search title, slug, or keyword"
+                  value={q}
+                  onChange={(event) => setQ(event.target.value)}
+                />
+                <button type="button" className="adm-btn" disabled={busy} onClick={() => void loadBlog()}>
+                  Refresh
+                </button>
+              </div>
+
+              <div className="adm-table-wrap">
+                <table className="adm-table is-blog">
+                  <thead>
+                    <tr>
+                      <th className="adm-col-title">Title</th>
+                      <th className="adm-col-slug">Slug</th>
+                      <th className="adm-col-keyword">Keyword</th>
+                      <th className="adm-col-status">Status</th>
+                      <th className="adm-col-updated">Updated</th>
+                      <th className="adm-col-actions">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {posts.map((post) => (
+                      <tr key={post.id}>
+                        <td className="adm-blog-title">{post.title}</td>
+                        <td className="adm-blog-slug">
+                          <a className="adm-link" href={`${APP_ORIGIN}/blog/${post.slug}`} target="_blank" rel="noreferrer">
+                            /blog/{post.slug}
+                          </a>
+                        </td>
+                        <td className="adm-blog-keyword">{post.keyword || "—"}</td>
+                        <td>
+                          <span className={post.published ? "adm-status is-paid" : "adm-status is-pending"}>
+                            {post.published ? "Published" : "Draft"}
+                          </span>
+                        </td>
+                        <td className="adm-nowrap">{fmtDate(post.updatedAt)}</td>
+                        <td className="adm-actions">
+                          <button type="button" className="adm-link" onClick={() => openEditBlog(post)}>
+                            Edit
+                          </button>
+                          <button type="button" className="adm-link danger" onClick={() => void removeBlog(post)}>
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!posts.length && !busy ? <p className="adm-empty">No posts yet. Click “New post”.</p> : null}
+              </div>
+              {pager}
+            </section>
+          ) : null}
+
+          {!blogEditor && tab !== "overview" && tab !== "blog" ? (
             <section className="adm-panel">
               <div className="adm-panel-head">
                 <h2>
@@ -699,30 +1037,11 @@ export function App() {
                 </div>
               ) : null}
 
-              {totalPages > 1 ? (
-                <div className="adm-pager">
-                  <span>
-                    Page {page + 1} of {totalPages}
-                  </span>
-                  <div className="adm-pager-acts">
-                    <button type="button" className="adm-btn" disabled={busy || page === 0} onClick={() => setPage((p) => p - 1)}>
-                      Previous
-                    </button>
-                    <button
-                      type="button"
-                      className="adm-btn"
-                      disabled={busy || page >= totalPages - 1}
-                      onClick={() => setPage((p) => p + 1)}
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              ) : null}
+              {pager}
             </section>
           ) : null}
 
-          {busy ? <p className="adm-note">Loading…</p> : null}
+          {!blogEditor && busy ? <p className="adm-note">Loading…</p> : null}
         </main>
       </div>
     </div>

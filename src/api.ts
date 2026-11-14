@@ -152,4 +152,50 @@ export function adminDeleteUser(id: string) {
   return request<{ ok: true }>(`/api/admin/users/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+export type AdminBlogPost = {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  keyword: string;
+  coverImage: string;
+  body: string;
+  html?: string;
+  published: boolean;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function adminListBlog(params: { q?: string; page?: number; limit?: number }) {
+  const query = new URLSearchParams();
+  if (params.q) query.set("q", params.q);
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.limit != null) query.set("limit", String(params.limit));
+  const suffix = query.toString() ? `?${query}` : "";
+  return request<{ posts: AdminBlogPost[]; total: number }>(`/api/admin/blog${suffix}`);
+}
+
+export function adminGetBlog(id: string) {
+  return request<{ post: AdminBlogPost }>(`/api/admin/blog/${encodeURIComponent(id)}`);
+}
+
+export function adminCreateBlog(body: Partial<AdminBlogPost> & { title: string }) {
+  return request<{ post: AdminBlogPost }>("/api/admin/blog", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminUpdateBlog(id: string, body: Partial<AdminBlogPost>) {
+  return request<{ post: AdminBlogPost }>(`/api/admin/blog/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminDeleteBlog(id: string) {
+  return request<{ ok: true }>(`/api/admin/blog/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export { ApiError };
