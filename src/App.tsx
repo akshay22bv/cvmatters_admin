@@ -14,9 +14,11 @@ import {
   adminListResumes,
   adminListUsers,
   adminStats,
+  adminGetSiteSettings,
   adminUpdateAdmin,
   adminUpdateBlog,
   adminUpdateResume,
+  adminUpdateSiteSettings,
   loadMe,
   signIn,
   signOut,
@@ -97,6 +99,16 @@ const TABS: { id: AdminPage; label: string; icon: ReactNode }[] = [
     ),
   },
   {
+    id: "settings",
+    label: "Site",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M12 2.8v2.2M12 18.8v2.4M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2.8 12h2.2M18.8 12h2.4M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     id: "admins",
     label: "Admins",
     icon: (
@@ -163,6 +175,9 @@ export function App() {
   const [adminForm, setAdminForm] = useState({ email: "", name: "", password: "" });
   const [adminModal, setAdminModal] = useState<null | { mode: "add" } | { mode: "edit"; row: AdminAdminRow }>(null);
   const [adminFormError, setAdminFormError] = useState("");
+  const [siteForm, setSiteForm] = useState({ operatorName: "", supportEmail: "", supportPhone: "" });
+  const [siteUpdatedAt, setSiteUpdatedAt] = useState<string | null>(null);
+  const [siteSaved, setSiteSaved] = useState("");
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [q, setQ] = useState("");
   const [publicFilter, setPublicFilter] = useState<"" | "true" | "false">("");
@@ -281,6 +296,22 @@ export function App() {
     }
   }, []);
 
+  const loadSiteSettings = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    setSiteSaved("");
+    try {
+      const result = await adminGetSiteSettings();
+      const { operatorName, supportEmail, supportPhone, updatedAt } = result.settings;
+      setSiteForm({ operatorName, supportEmail, supportPhone: supportPhone || "" });
+      setSiteUpdatedAt(updatedAt || null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Couldn't load site settings.");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   useEffect(() => {
     setPage(0);
     setQ("");
@@ -300,8 +331,31 @@ export function App() {
     else if (tab === "orders") void loadOrders();
     else if (tab === "blog") void loadBlog();
     else if (tab === "admins") void loadAdmins();
+    else if (tab === "settings") void loadSiteSettings();
     else void loadResumes();
-  }, [blogEditor, isAdmin, loadAdmins, loadBlog, loadOrders, loadOverview, loadResumes, loadUsers, page, tab]);
+  }, [blogEditor, isAdmin, loadAdmins, loadBlog, loadOrders, loadOverview, loadResumes, loadSiteSettings, loadUsers, page, tab]);
+
+  const saveSiteSettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setSiteSaved("");
+    try {
+      const result = await adminUpdateSiteSettings({
+        operatorName: siteForm.operatorName.trim(),
+        supportEmail: siteForm.supportEmail.trim(),
+        supportPhone: siteForm.supportPhone.trim(),
+      });
+      const { operatorName, supportEmail, supportPhone, updatedAt } = result.settings;
+      setSiteForm({ operatorName, supportEmail, supportPhone: supportPhone || "" });
+      setSiteUpdatedAt(updatedAt || null);
+      setSiteSaved("Saved. Footer, contact, and legal pages pick this up within about a minute.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Couldn't save site settings.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const onLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -732,9 +786,11 @@ export function App() {
                         ? "Accounts, plans, and CV counts."
                         : tab === "blog"
                           ? "Write SEO posts. Public URLs look like /blog/your-slug."
-                          : tab === "admins"
-                            ? "Grant or revoke admin access for team emails."
-                            : "Hosted resumes and public pages."}
+                          : tab === "settings"
+                            ? "Grievance officer name, support email, and optional phone on the public site."
+                            : tab === "admins"
+                              ? "Grant or revoke admin access for team emails."
+                              : "Hosted resumes and public pages."}
               </p>
             </div>
             {tab === "overview" && !blogEditor ? (
@@ -986,6 +1042,57 @@ export function App() {
                 {!posts.length && !busy ? <p className="adm-empty">No posts yet. Click “New post”.</p> : null}
               </div>
               {pager}
+            </section>
+          ) : null}
+
+          {!blogEditor && tab === "settings" ? (
+            <section className="adm-panel">
+              <div className="adm-panel-head">
+                <h2>Public contact &amp; grievance</h2>
+                <button type="button" className="adm-btn" disabled={busy} onClick={() => void loadSiteSettings()}>
+                  Refresh
+                </button>
+              </div>
+              <p className="adm-note">
+                Shown in the site footer, contact page, and terms (Grievance Officer). Leave phone blank to hide it.
+                {siteUpdatedAt ? ` Last updated ${fmtDate(siteUpdatedAt)}.` : ""}
+              </p>
+              {siteSaved ? <p className="adm-note is-success">{siteSaved}</p> : null}
+              <form className="adm-site-form" onSubmit={(event) => void saveSiteSettings(event)}>
+                <label>
+                  Grievance officer / operator name
+                  <input
+                    required
+                    value={siteForm.operatorName}
+                    onChange={(event) => setSiteForm((current) => ({ ...current, operatorName: event.target.value }))}
+                    placeholder="Full legal name"
+                  />
+                </label>
+                <label>
+                  Support email
+                  <input
+                    required
+                    type="email"
+                    value={siteForm.supportEmail}
+                    onChange={(event) => setSiteForm((current) => ({ ...current, supportEmail: event.target.value }))}
+                    placeholder="support@example.com"
+                  />
+                </label>
+                <label>
+                  Support phone <span className="adm-field-hint">(optional)</span>
+                  <input
+                    type="tel"
+                    value={siteForm.supportPhone}
+                    onChange={(event) => setSiteForm((current) => ({ ...current, supportPhone: event.target.value }))}
+                    placeholder="Leave empty to hide on site"
+                  />
+                </label>
+                <div className="adm-blog-form-acts">
+                  <button type="submit" className="adm-btn is-primary" disabled={busy}>
+                    Save site settings
+                  </button>
+                </div>
+              </form>
             </section>
           ) : null}
 

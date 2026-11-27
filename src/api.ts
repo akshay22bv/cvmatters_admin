@@ -241,4 +241,22 @@ export function adminDeleteAdmin(id: string) {
   return request<{ ok: true }>(`/api/admin/admins/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+export type AdminSiteSettings = {
+  operatorName: string;
+  supportEmail: string;
+  supportPhone: string;
+  updatedAt?: string | null;
+};
+
+export function adminGetSiteSettings() {
+  return request<{ settings: AdminSiteSettings }>("/api/admin/site-settings");
+}
+
+export function adminUpdateSiteSettings(body: Partial<AdminSiteSettings>) {
+  return request<{ settings: AdminSiteSettings }>("/api/admin/site-settings", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
 export { ApiError };

@@ -855,6 +855,31 @@ select {
   overflow: hidden;
 }
 
+.adm-site-form {
+  display: grid;
+  gap: 14px;
+  max-width: 520px;
+  margin-top: 12px;
+}
+
+.adm-site-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.adm-site-form input {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--adm-border, #d8dde3);
+  border-radius: 10px;
+}
+
+.adm-note.is-success {
+  color: #0d6b4c;
+}
+
 .adm-blog-page .adm-blog-form {
   display: grid;
   gap: 18px;
